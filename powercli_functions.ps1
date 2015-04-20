@@ -31,6 +31,8 @@
        Author:  Andrey Nevedomskiy
     .FUNCTIONALITY
        This function returns the vSphere View objects with names corresponding to specified regular expression and type.
+    .LINK
+       https://github.com/monosoul/powercli_functions.ps1
     .OUTPUTS
        vSphere View object(s)
   #>
@@ -93,6 +95,8 @@ Function PreStart {
        Author:  Andrey Nevedomskiy
     .FUNCTIONALITY
        This function connects to VIServer, disables deprecation warnings and returns session object.
+    .LINK
+       https://github.com/monosoul/powercli_functions.ps1
     .OUTPUTS
        [VIServerImpl]
   #>
@@ -142,6 +146,8 @@ Function PostStart {
        Author:  Andrey Nevedomskiy
     .FUNCTIONALITY
        This functions disconnects session with VIServer and removes all variables.
+    .LINK
+       https://github.com/monosoul/powercli_functions.ps1
   #>
   param(
     [parameter(Mandatory = $true)][VMware.VimAutomation.ViCore.Impl.V1.VIServerImpl]$visession
@@ -175,6 +181,8 @@ Function Get-Interval {
        Author:  Andrey Nevedomskiy
     .FUNCTIONALITY
        This function suggests most suitable history interval of vCenter statisctics for selected dates.
+    .LINK
+       https://github.com/monosoul/powercli_functions.ps1
   #>
   param(
     [parameter(Mandatory = $true)][DateTime]$startdate,
@@ -302,6 +310,8 @@ Function Get-Metrics {
        Author:  Andrey Nevedomskiy
     .FUNCTIONALITY
        This function collets statisctics for selected metrics of objects provided in list for selected period.
+    .LINK
+       https://github.com/monosoul/powercli_functions.ps1
   #>
   param(
     [parameter(Mandatory = $true)][string]$selecteddate,
@@ -393,7 +403,7 @@ Function New-VM-SDK {
     .Synopsis
        This function creates a new virtual machine.
     .DESCRIPTION
-       This function creates a new virtual machine with the provided parameters. The network adapter and the SCSI adapter of the new virtual machine are created of the recommended type for the OS that is specified by the GuestId parameter. If  the OSCustomizationSpec parameter is used,  the virtual machine is customized according to the spec.
+       This function creates a new virtual machine with the provided parameters. The network adapter and the SCSI adapter of the new virtual machine are created of the recommended type for the OS that is specified by the GuestId parameter. If  the custSpec parameter is used,  the virtual machine is customized according to the spec.
     .EXAMPLE
        $folder = Get-Folder "Some folder"
 
@@ -427,6 +437,8 @@ Function New-VM-SDK {
        Author:  Andrey Nevedomskiy
     .FUNCTIONALITY
        This function creates a new virtual machine.
+    .LINK
+       https://github.com/monosoul/powercli_functions.ps1
   #>
   param(
     [parameter(Mandatory = $true)][string]$Name,
@@ -619,6 +631,8 @@ Function New-HardDisk-SDK {
        Author:  Andrey Nevedomskiy
     .FUNCTIONALITY
        This function creates a new hard disk on the specified location.
+    .LINK
+       https://github.com/monosoul/powercli_functions.ps1
   #>
   param(
     [parameter(Mandatory = $true)][int]$CapacityGB,
@@ -820,6 +834,8 @@ Function Get-FolderPath {
        Author:  Andrey Nevedomskiy
     .FUNCTIONALITY
        This function returns full path to specified Virtual Infrasctructure folder.
+    .LINK
+       https://github.com/monosoul/powercli_functions.ps1
   #>
   param(
     [parameter(Mandatory = $true)][VMware.Vim.ManagedObjectReference]$folder
@@ -855,6 +871,8 @@ Function Set-VM-SDK {
        Author:  Andrey Nevedomskiy
     .FUNCTIONALITY
        This function modifies the configuration of the virtual machine.
+    .LINK
+       https://github.com/monosoul/powercli_functions.ps1
   #>
   param(
     [parameter(Mandatory = $true, ValueFromPipeline = $true)]
@@ -929,6 +947,8 @@ Function Get-VMEvents {
        Author:  Andrey Nevedomskiy
     .FUNCTIONALITY
        This function retrieves information about the events of VM on a vCenter Server system.
+    .LINK
+       https://github.com/monosoul/powercli_functions.ps1
   #>
   param(
     [parameter(Mandatory = $true)][string]$vmname,
@@ -963,6 +983,8 @@ Function Clone-OSCustomizationSpec-SDK {
        Author:  Andrey Nevedomskiy
     .FUNCTIONALITY
        This functions clones existing OS customization specification to new non persistent one.
+    .LINK
+       https://github.com/monosoul/powercli_functions.ps1
   #>
   param(
     [string]$Name,
@@ -1001,6 +1023,8 @@ Function Set-OSCustomizationNicMapping-SDK {
        Author:  Andrey Nevedomskiy
     .FUNCTIONALITY
        This function modifies the provided OS customization NIC mappings.
+    .LINK
+       https://github.com/monosoul/powercli_functions.ps1
     .OUTPUTS
        [CustomizationSpecItem]
   #>
@@ -1080,6 +1104,8 @@ Function Set-OSCustomizationSpec-SDK {
        Author:  Andrey Nevedomskiy
     .FUNCTIONALITY
        This function modifies the specified OS customization specification.
+    .LINK
+       https://github.com/monosoul/powercli_functions.ps1
     .OUTPUTS
        [CustomizationSpecItem]
   #>
