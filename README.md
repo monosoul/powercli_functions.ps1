@@ -27,6 +27,8 @@ This function suggests most suitable history interval of vCenter statisctics for
     Get-Help Get-Interval -Full
 
 #### Get-Metrics
+**This function uses function Get-Stat2 (which could be found in my same-named repo)**
+
 This function collets statisctics for selected metrics of objects provided in list for selected period. Statisctics would be saved to %temp% folder with next file names:
 
 For period 1:
