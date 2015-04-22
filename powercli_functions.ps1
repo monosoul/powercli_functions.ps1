@@ -939,8 +939,14 @@ Function Get-VMEvents {
        $VM = Get-View -ViewType VirtualMachine -Filter @{"Config.Template"="False";Name="^VM001$"}
 
        Get-VMEvents -vmname $VM.Name
+	.EXAMPLE
+       $VM = Get-View -ViewType VirtualMachine -Filter @{"Config.Template"="False";Name="^VM001$"}
+
+       Get-VMEvents -Id $VM.MoRef
     .PARAMETER vmname
        Specifies the name of virtual machine for which you want to get events.
+	.PARAMETER Id
+       Specifies the managed object reference id of virtual machine for which you want to get events.
     .PARAMETER types
        Specifies event types you want to get.
     .NOTES
@@ -951,7 +957,8 @@ Function Get-VMEvents {
        https://github.com/monosoul/powercli_functions.ps1
   #>
   param(
-    [parameter(Mandatory = $true)][string]$vmname,
+    [parameter(ParameterSetName = "Name", Mandatory = $true)][string]$vmname,
+    [parameter(ParameterSetName = "Id", Mandatory = $true)][PSObject]$Id,
     [String[]]$types
   )
 
@@ -959,8 +966,11 @@ Function Get-VMEvents {
   $em = Get-View $si.Content.EventManager
   $EventFilterSpec = New-Object VMware.Vim.EventFilterSpec
   $EventFilterSpec.EventTypeId = $types
-
-  $vmentity = get-view -ViewType virtualmachine -Filter @{'name'="^$vmname$"}
+  if ($vmname) {
+    $vmentity = get-view -ViewType virtualmachine -Filter @{'name'="^$vmname$"}
+  } else {
+    $vmentity = get-view $Id
+  }
   $EventFilterSpec.Entity = New-Object VMware.Vim.EventFilterSpecByEntity
   $EventFilterSpec.Entity.Entity = $vmentity.moref
 
