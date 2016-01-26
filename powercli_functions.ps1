@@ -1,4 +1,4 @@
-﻿Function Get-View2 {
+﻿Function Global:Get-View2 {
   <#
     .Synopsis
        This function returns the vSphere View object(s) with names corresponding to specified regular expression and type.
@@ -31,10 +31,10 @@
        Author:  Andrey Nevedomskiy
     .FUNCTIONALITY
        This function returns the vSphere View objects with names corresponding to specified regular expression and type.
-    .LINK
-       https://github.com/monosoul/powercli_functions.ps1
     .OUTPUTS
        vSphere View object(s)
+    .LINK
+       https://github.com/monosoul/powercli_functions.ps1
   #>
   param(
     [parameter(ParameterSetName = "Name", Position = 0)][string]$Name=".*",
@@ -76,7 +76,47 @@
   return $result
 }
 
-Function PreStart {
+Function Global:Import-PCLImodules {
+  <#
+    .Synopsis
+       This function imports PowerCLI modules necessary for proper script work.
+    .DESCRIPTION
+       This function imports PowerCLI modules necessary for proper script work.
+    .EXAMPLE
+       Import-PCLImodules
+    .NOTES
+       Author:  Andrey Nevedomskiy
+    .FUNCTIONALITY
+       This function imports PowerCLI modules necessary for proper script work.
+    .LINK
+       https://github.com/monosoul/powercli_functions.ps1
+  #>
+  Write-Host "Импорт модулей..." -f gray -NoNewline
+  $exectime = Measure-Command {
+    if ((Get-PSSnapin -Name VMware.VimAutomation.Core -ErrorAction SilentlyContinue) -eq $null)
+    {
+      Add-PSSnapin VMware.VimAutomation.Core -ErrorAction Stop
+    }
+
+    $pcliver = Get-PowerCLIVersion
+    if ($pcliver.Major -le 5) {
+      if ((Get-PSSnapin -Name VMware.VimAutomation.Vds -ErrorAction SilentlyContinue) -eq $null) {
+        Add-PSSnapin VMware.VimAutomation.Vds -ErrorAction Stop
+      }
+      if ((Get-PSSnapin -Name VMware.VimAutomation.Storage -ErrorAction SilentlyContinue) -eq $null) {
+        Add-PSSnapin VMware.VimAutomation.Storage -ErrorAction Stop
+      }
+    }
+    else {
+      Import-Module VMware.VimAutomation.Vds -ErrorAction Stop
+      Import-Module VMware.VimAutomation.Storage -ErrorAction Stop
+    }
+  }
+  Write-Host "Готово!" -f Green -NoNewline
+  Write-Host " ($($exectime.Minutes) м., $($exectime.Seconds) с.)" -f Yellow
+}
+
+Function Global:PreStart {
   <#
     .Synopsis
        This function connects to VIServer, disables deprecation warnings and returns session object.
@@ -95,32 +135,23 @@ Function PreStart {
        Author:  Andrey Nevedomskiy
     .FUNCTIONALITY
        This function connects to VIServer, disables deprecation warnings and returns session object.
-    .LINK
-       https://github.com/monosoul/powercli_functions.ps1
     .OUTPUTS
        [VIServerImpl]
+    .LINK
+       https://github.com/monosoul/powercli_functions.ps1
   #>
   param(
     [parameter(Mandatory = $true, ParameterSetName = "visession")][PSObject]$visession=$null,
     [parameter(Mandatory = $true, ParameterSetName = "viserver")][string]$VIServer=$null
   )
-  Write-Host "Импорт модулей..." -f gray -NoNewline
-  $exectime = Measure-Command {
-    if (((Get-PSSnapin -Name VMware.VimAutomation.Core -ErrorAction SilentlyContinue) -eq $null) -and ((Get-PSSnapin -Name VMware.vimautomation.vds -ErrorAction SilentlyContinue) -eq $null))
-    {
-      Add-PSSnapin VMware.VimAutomation.Core -ErrorAction SilentlyContinue
-      Add-PSSnapin VMware.vimautomation.vds -ErrorAction SilentlyContinue
-    }
-  }
-  Write-Host "Готово!" -f Green -NoNewline
-  Write-Host " ($($exectime.Minutes) м., $($exectime.Seconds) с.)" -f Yellow
+  Import-PCLImodules
 
   Write-Host "Подключение к vCenter $(&{if ($VIServer) {$VIServer} else {$visession.Name}})..." -f gray -NoNewline
   $exectime = Measure-Command {
     if ($visession) {
-      $visession = Connect-VIServer $visession.Name -Session $visession.SessionId -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
+      $visession = Connect-VIServer $visession.Name -Session $visession.SessionId -ErrorAction Stop -WarningAction SilentlyContinue
     } elseif ($VIServer) {
-      $visession = Connect-VIServer $VIServer -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
+      $visession = Connect-VIServer $VIServer -ErrorAction Stop -WarningAction SilentlyContinue
     }
   }
   Write-Host "Готово!" -f Green -NoNewline
@@ -132,7 +163,7 @@ Function PreStart {
   return $visession
 }
 
-Function PostStart {
+Function Global:PostStart {
   <#
     .Synopsis
        This function disconnects session with VIServer and removes all variables.
@@ -159,7 +190,7 @@ Function PostStart {
   [System.GC]::Collect()
 }
 
-Function Get-Interval {
+Function Global:Get-Interval {
   <#
     .Synopsis
        This function suggests most suitable history interval of vCenter statisctics for selected dates.
@@ -249,7 +280,7 @@ Function Get-Interval {
   return $result
 }
 
-Function Get-Metrics {
+Function Global:Get-Metrics {
   <#
     .Synopsis
        This function collets statisctics for selected metrics of objects provided in list for selected period.
@@ -306,6 +337,10 @@ Function Get-Metrics {
       List of objects for which statistics should be collected. Usually it's virtual machine or host.
     .PARAMETER selectcount
       Amount of objects that should be processed at one time.
+    .PARAMETER singlefile
+      Forces function to save all metrics for period in one file instead of many.
+    .PARAMETER groupbymetrics
+      Forces function to group all metrics by counter names.
     .NOTES
        Author:  Andrey Nevedomskiy
     .FUNCTIONALITY
@@ -314,17 +349,21 @@ Function Get-Metrics {
        https://github.com/monosoul/powercli_functions.ps1
   #>
   param(
-    [parameter(Mandatory = $true)][string]$selecteddate,
-    [parameter(Mandatory = $true)][int]$period1,
-    [ValidateSet($true,$false)][bool]$includePeriod2 = $false,
-    [int]$period2,
-    [parameter(Mandatory = $true)][ValidateScript({
+    [parameter(Mandatory = $true, ParameterSetName = "basic")]$selecteddate,
+    [parameter(Mandatory = $true, ParameterSetName = "basic")][int]$period1,
+    [parameter(Mandatory = $false, ParameterSetName = "basic")][ValidateSet($true,$false)][bool]$includePeriod2 = $false,
+    [parameter(Mandatory = $false, ParameterSetName = "basic")][int]$period2,
+    [parameter(Mandatory = $true, ParameterSetName = "basic")][ValidateScript({
       $_ | %{
         if ($_ -match "[A-Za-z]+\.[A-Za-z]+\.[A-Za-z]+") {$true} else {$false}
       }
     })][PSObject]$metricslist,
-    [parameter(Mandatory = $true)][PSObject]$list,
-    [int]$selectcount = 100
+    [parameter(Mandatory = $true, ParameterSetName = "basic")][PSObject]$list,
+    [parameter(Mandatory = $false, ParameterSetName = "basic")][int]$selectcount = 100,
+    [parameter(Mandatory = $false, ParameterSetName = "basic")]
+    [parameter(Mandatory = $false, ParameterSetName = "singlefile")][switch]$singlefile,
+    [parameter(Mandatory = $false, ParameterSetName = "basic")]
+    [parameter(Mandatory = $false, ParameterSetName = "groupbymetrics")][switch]$groupbymetrics
   )
 
   $enddate = Get-Date $selecteddate
@@ -334,22 +373,49 @@ Function Get-Metrics {
   # вычисляем, в какой истории искать значения
   $p1interval = Get-Interval -startdate $p1startdate -enddate $enddate
   [int]$skiplines = 0
+  $first = $true
   while ($skiplines -lt @($list).Count) {
     Write-Host "Получаем метрики для $skiplines - $($skiplines + $selectcount) объектов за 1ый период..." -f gray -NoNewline
     $exectime = Measure-Command {
       $list2 = $list | select -First $selectcount -Skip $skiplines
       if (($p1interval.Value -eq "HI1") -or ($p1interval.Value -eq "RT")) {
-        $p1out = Get-Stat2 -Entity $list2 -Interval $p1interval.Value -Stat $metricslist -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
+        $p1out = Get-Stat2 -Entity $list2 -Interval $p1interval.Value -Stat $metricslist -SkipInstanceCheck -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
       } else {
-        $p1out = Get-Stat2 -Entity $list2 -Start $p1startdate -Finish $enddate -Interval $p1interval.Value -Stat $metricslist -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
+        $p1out = Get-Stat2 -Entity $list2 -Start $p1startdate -Finish $enddate -Interval $p1interval.Value -Stat $metricslist -SkipInstanceCheck -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
       }
-      $group = $p1out | Group-Object -Property EntityId
-      ForEach ($item in $group) {
-        $csvFile = ($env:temp + "\p1_" + $($item.Name) + "_Metrics.csv")
-        Remove-File $csvFile
-        $item.Group | Export-Csv -NoTypeInformation -Encoding Default -Delimiter ";" -Path $csvFile
+      if ($singlefile.IsPresent) {
+        $csvFile = ($env:temp + "\p1_" + $(Get-Date $enddate -Format dd.MM.yyyy) + "_Metrics.csv")
+        if ($first) {
+          Remove-File $csvFile
+          $first = $false
+        }
+        $p1out | Export-Csv -NoTypeInformation -Encoding Default -Delimiter ";" -Append -Path $csvFile
+      } elseif ($groupbymetrics.IsPresent) {
+          $group = $p1out | Group-Object -Property CounterName
+          ForEach ($item in $group) {
+            $csvFile = ($env:temp + "\p1_" + $($item.Name) + "_Metrics.csv")
+            if ($first) {
+              Remove-File $csvFile
+            }
+            $item.Group | Export-Csv -NoTypeInformation -Encoding Default -Delimiter ";" -Append -Path $csvFile
+          }
+          $first = $false
+          if ($item) {
+            Remove-Variable -Name item -Force
+          }
+          Remove-Variable -Name group -Force
+      } else {
+        $group = $p1out | Group-Object -Property EntityId
+        ForEach ($item in $group) {
+          $csvFile = ($env:temp + "\p1_" + $($item.Name) + "_Metrics.csv")
+          Remove-File $csvFile
+          $item.Group | Export-Csv -NoTypeInformation -Encoding Default -Delimiter ";" -Path $csvFile
+        }
+        if ($item) {
+          Remove-Variable -Name item -Force
+        }
+        Remove-Variable -Name group -Force
       }
-      Remove-Variable -Name group -Force
       Remove-Variable -Name p1out -Force
       if ($list2) {
         Remove-Variable -Name list2 -Force
@@ -363,47 +429,96 @@ Function Get-Metrics {
 
   # если 2ой период выбран
   if ($includePeriod2 -eq $true) {
-    #2 период
-    $p2startdate = $(Get-Date $enddate).AddDays("-$period2")
-    # вычисляем, в какой истории искать значения
-    $p2interval = Get-Interval -startdate $p2startdate -enddate $enddate
-    [int]$skiplines = 0
-    while ($skiplines -lt @($list).Count) {
-      Write-Host "Получаем метрики для $skiplines - $($skiplines + $selectcount) объектов за 2ой период..." -f gray -NoNewline
+    # если период 2 равен периоду 1
+    if ($period2 -eq $period1) {
+      Write-Host "Копируем метрики для $($list.Count) объектов во 2ой период..." -f gray -NoNewline
       $exectime = Measure-Command {
-        $list2 = $list | select -First $selectcount -Skip $skiplines
-        if (($p2interval.Value -eq "HI1") -or ($p2interval.Value -eq "RT")) {
-          $p2out = Get-Stat2 -Entity $list2 -Interval $p2interval.Value -Stat $metricslist -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
-        } else {
-          $p2out = Get-Stat2 -Entity $list2 -Start $p2startdate -Finish $enddate -Interval $p2interval.Value -Stat $metricslist -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
+        ForEach ($litem in $list) {
+          $csvFile1 = ($env:temp + "\p1_" + $($litem.MoRef.ToString()) + "_Metrics.csv")
+          $csvFile2 = ($env:temp + "\p2_" + $($litem.MoRef.ToString()) + "_Metrics.csv")
+          if (Test-Path $csvFile1) {
+            Copy-Item -Path $csvFile1 -Destination $csvFile2 -Force -Confirm:$false
+          }
+          if ($csvFile1) {
+            Remove-Variable -Name csvFile1 -Force -Confirm:$false
+          }
+          if ($csvFile2) {
+            Remove-Variable -Name csvFile2 -Force -Confirm:$false
+          }
         }
-        $group = $p2out | Group-Object -Property EntityId
-        ForEach ($item in $group) {
-          $csvFile = ($env:temp + "\p2_" + $($item.Name) + "_Metrics.csv")
-          Remove-File $csvFile
-          $item.Group | Export-Csv -NoTypeInformation -Encoding Default -Delimiter ";" -Path $csvFile
-        }
-        Remove-Variable -Name group -Force
-        Remove-Variable -Name p2out -Force
-        if ($list2) {
-          Remove-Variable -Name list2 -Force
-        }
-        [System.GC]::Collect()
-        $skiplines += $selectcount
       }
       Write-Host "Готово!" -f Green -NoNewline
       Write-Host " ($($exectime.Minutes) м., $($exectime.Seconds) с.)" -f Yellow
+    } else {
+      #2 период
+      $p2startdate = $(Get-Date $enddate).AddDays("-$period2")
+      # вычисляем, в какой истории искать значения
+      $p2interval = Get-Interval -startdate $p2startdate -enddate $enddate
+      [int]$skiplines = 0
+      $first = $true
+      while ($skiplines -lt @($list).Count) {
+        Write-Host "Получаем метрики для $skiplines - $($skiplines + $selectcount) объектов за 2ой период..." -f gray -NoNewline
+        $exectime = Measure-Command {
+          $list2 = $list | select -First $selectcount -Skip $skiplines
+          if (($p2interval.Value -eq "HI1") -or ($p2interval.Value -eq "RT")) {
+            $p2out = Get-Stat2 -Entity $list2 -Interval $p2interval.Value -Stat $metricslist -SkipInstanceCheck -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
+          } else {
+            $p2out = Get-Stat2 -Entity $list2 -Start $p2startdate -Finish $enddate -Interval $p2interval.Value -Stat $metricslist -SkipInstanceCheck -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
+          }
+          if ($singlefile.IsPresent) {
+            $csvFile = ($env:temp + "\p2_Metrics.csv")
+            if ($first) {
+              Remove-File $csvFile
+              $first = $false
+            }
+            $p2out | Export-Csv -NoTypeInformation -Encoding Default -Delimiter ";" -Append -Path $csvFile
+          } elseif ($groupbymetrics.IsPresent) {
+            $group = $p2out | Group-Object -Property CounterName
+            ForEach ($item in $group) {
+              $csvFile = ($env:temp + "\p2_" + $($item.Name) + "_Metrics.csv")
+              if ($first) {
+                Remove-File $csvFile
+              }
+              $item.Group | Export-Csv -NoTypeInformation -Encoding Default -Delimiter ";" -Append -Path $csvFile
+            }
+            $first = $false
+            if ($item) {
+              Remove-Variable -Name item -Force
+            }
+            Remove-Variable -Name group -Force
+          } else {
+            $group = $p2out | Group-Object -Property EntityId
+            ForEach ($item in $group) {
+              $csvFile = ($env:temp + "\p2_" + $($item.Name) + "_Metrics.csv")
+              Remove-File $csvFile
+              $item.Group | Export-Csv -NoTypeInformation -Encoding Default -Delimiter ";" -Path $csvFile
+            }
+            if ($item) {
+              Remove-Variable -Name item -Force
+            }
+            Remove-Variable -Name group -Force
+          }
+          Remove-Variable -Name p2out -Force
+          if ($list2) {
+            Remove-Variable -Name list2 -Force
+          }
+          [System.GC]::Collect()
+          $skiplines += $selectcount
+        }
+        Write-Host "Готово!" -f Green -NoNewline
+        Write-Host " ($($exectime.Minutes) м., $($exectime.Seconds) с.)" -f Yellow
+      }
     }
   }
 
 }
 
-Function New-VM-SDK {
+Function Global:New-VM-SDK {
   <#
     .Synopsis
        This function creates a new virtual machine.
     .DESCRIPTION
-       This function creates a new virtual machine with the provided parameters. The network adapter and the SCSI adapter of the new virtual machine are created of the recommended type for the OS that is specified by the GuestId parameter. If  the custSpec parameter is used,  the virtual machine is customized according to the spec.
+       This function creates a new virtual machine with the provided parameters. The network adapter and the SCSI adapter of the new virtual machine are created of the recommended type for the OS that is specified by the GuestId parameter. If  the OSCustomizationSpec parameter is used,  the virtual machine is customized according to the spec.
     .EXAMPLE
        $folder = Get-Folder "Some folder"
 
@@ -508,7 +623,11 @@ Function New-VM-SDK {
   $exec_date = Get-Date -Format "dd.MM.yyyy HH.mm.ss"
   Write-Verbose "$exec_date	New-VM-SDK	Получения каталога для ВМ"
   if ($Location) {
-    $target = Get-Folder $Location -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
+    if ($Location.ID) {
+      $target = $Location
+    } else {
+      $target = Get-Folder $Location -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
+    }
     $targetview = get-view $target.ID
   } else {
     Write-Verbose "New-VM-SDK: Ошибка :`r`nНе указан каталог для деплоя!"
@@ -520,8 +639,8 @@ Function New-VM-SDK {
   $exec_date = Get-Date -Format "dd.MM.yyyy HH.mm.ss"
   Write-Verbose "$exec_date	New-VM-SDK	Поулчение шаблона"
   if ($Template) {
-    $vmmor = Get-Template -Name $Template -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
-    $vmmorview = get-view $vmmor.id
+    $vmmor = Get-View2 -ViewType Template -Name $Template -Property Name -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
+    $vmmorview = get-view $vmmor.MoRef
   } else {
     Write-Verbose "New-VM-SDK: Ошибка :`r`nНе указан шаблон для деплоя!"
     Write-Error "Ошибка:`r`nНе указан шаблон для деплоя!" -TargetObject $Name
@@ -598,7 +717,7 @@ Function New-VM-SDK {
   }
 }
 
-Function New-HardDisk-SDK {
+Function Global:New-HardDisk-SDK {
   <#
     .Synopsis
        This function creates a new hard disk on the specified location.
@@ -684,8 +803,24 @@ Function New-HardDisk-SDK {
   }
   $controllerKey = $vm_controller.Key
 
-  # Устанавливаем номер диска (unit)
-  $unitNumber = ($controller.Device.Count + 1) #на один больше, чем текущее количество
+  # bulding unit numbers array
+  $unitNumbers = New-Object System.Collections.ArrayList
+  0..15 | %{
+    $unitNumbers.Add($_) | Out-Null
+  }
+  $unitNumbers.Remove($unitNumbers[7]) # Removing number 7 as it's reserved
+  # removing already used unit numbers
+  ForEach ($devicekey in $vm_controller.Device) {
+    $vmdisk = $vm_devices | ?{ $_.Key -eq $devicekey }
+    $unitNumbers.Remove($($unitNumbers | ?{ $_ -eq $vmdisk.UnitNumber }))
+  }
+  if ($unitNumbers.Count -gt 0) {
+    $unitNumber = $unitNumbers[0]
+  } else {
+    Write-Verbose "New-HardDisk-SDK: Ошибка создания диска:`r`nНа одном контроллере может быть не более 15 дисков!"
+    Write-Error "Ошибка создания диска:`r`nНа одном контроллере может быть не более 15 дисков!" -TargetObject $VM
+    return $null
+  }
 
   # Получем ID датастора, если он был указан
   if ($Datastore) {
@@ -722,6 +857,7 @@ Function New-HardDisk-SDK {
     $spec.deviceChange[0].device.backing.diskMode = "persistent"
     if ($ThinProvisioned.IsPresent) {
       $spec.deviceChange[0].device.backing.ThinProvisioned = $true
+      $spec.deviceChange[0].device.backing.eagerlyScrub = $false
     }
     $spec.deviceChange[0].device.connectable = New-Object VMware.Vim.VirtualDeviceConnectInfo
     $spec.deviceChange[0].device.connectable.startConnected = $true
@@ -769,6 +905,9 @@ Function New-HardDisk-SDK {
     $storageSpec.configSpec.deviceChange[0].device.backing = New-Object VMware.Vim.VirtualDiskFlatVer2BackingInfo
     $storageSpec.configSpec.deviceChange[0].device.backing.fileName = "[$($LUN.Name)]"
     $storageSpec.configSpec.deviceChange[0].device.backing.diskMode = "persistent"
+    if ($ThinProvisioned.IsPresent) {
+      $storageSpec.configSpec.deviceChange[0].device.backing.thinProvisioned = $true
+    }
     $storageSpec.configSpec.deviceChange[0].device.connectable = New-Object VMware.Vim.VirtualDeviceConnectInfo
     $storageSpec.configSpec.deviceChange[0].device.connectable.startConnected = $true
     $storageSpec.configSpec.deviceChange[0].device.connectable.allowGuestControl = $false
@@ -814,7 +953,7 @@ Function New-HardDisk-SDK {
   }
 }
 
-Function Get-FolderPath {
+Function Global:Get-FolderPath {
   <#
     .Synopsis
        This function returns full path to specified Virtual Infrasctructure folder.
@@ -849,7 +988,7 @@ Function Get-FolderPath {
   return $fullpath
 }
 
-Function Set-VM-SDK {
+Function Global:Set-VM-SDK {
   <#
     .Synopsis
        This function modifies the configuration of the virtual machine.
@@ -929,7 +1068,7 @@ Function Set-VM-SDK {
   }
 }
 
-Function Get-VMEvents {
+Function Global:Get-VMEvents {
   <#
     .Synopsis
        This function retrieves information about the events of VM on a vCenter Server system.
@@ -939,13 +1078,13 @@ Function Get-VMEvents {
        $VM = Get-View -ViewType VirtualMachine -Filter @{"Config.Template"="False";Name="^VM001$"}
 
        Get-VMEvents -vmname $VM.Name
-	.EXAMPLE
+    .EXAMPLE
        $VM = Get-View -ViewType VirtualMachine -Filter @{"Config.Template"="False";Name="^VM001$"}
 
        Get-VMEvents -Id $VM.MoRef
     .PARAMETER vmname
        Specifies the name of virtual machine for which you want to get events.
-	.PARAMETER Id
+    .PARAMETER Id
        Specifies the managed object reference id of virtual machine for which you want to get events.
     .PARAMETER types
        Specifies event types you want to get.
@@ -977,7 +1116,7 @@ Function Get-VMEvents {
   return $em.QueryEvents($EventFilterSpec)
 }
 
-Function Clone-OSCustomizationSpec-SDK {
+Function Global:Clone-OSCustomizationSpec-SDK {
   <#
     .Synopsis
        This functions clones existing OS customization specification to new non persistent one.
@@ -1007,7 +1146,7 @@ Function Clone-OSCustomizationSpec-SDK {
   return $objCustSpec
 }
 
-Function Set-OSCustomizationNicMapping-SDK {
+Function Global:Set-OSCustomizationNicMapping-SDK {
   <#
     .Synopsis
        This function modifies the provided OS customization NIC mappings.
@@ -1033,10 +1172,10 @@ Function Set-OSCustomizationNicMapping-SDK {
        Author:  Andrey Nevedomskiy
     .FUNCTIONALITY
        This function modifies the provided OS customization NIC mappings.
-    .LINK
-       https://github.com/monosoul/powercli_functions.ps1
     .OUTPUTS
        [CustomizationSpecItem]
+    .LINK
+       https://github.com/monosoul/powercli_functions.ps1
   #>
   param(
     [Parameter(Mandatory = $true, ValueFromPipeline=$True, Position = 0)]
@@ -1086,7 +1225,7 @@ Function Set-OSCustomizationNicMapping-SDK {
   return $OSCustomizationSpec
 }
 
-Function Set-OSCustomizationSpec-SDK {
+Function Global:Set-OSCustomizationSpec-SDK {
   <#
     .Synopsis
        This function modifies the specified OS customization specification.
@@ -1114,10 +1253,10 @@ Function Set-OSCustomizationSpec-SDK {
        Author:  Andrey Nevedomskiy
     .FUNCTIONALITY
        This function modifies the specified OS customization specification.
-    .LINK
-       https://github.com/monosoul/powercli_functions.ps1
     .OUTPUTS
        [CustomizationSpecItem]
+    .LINK
+       https://github.com/monosoul/powercli_functions.ps1
   #>
   param(
     [Parameter(Mandatory = $true, ValueFromPipeline=$True, Position = 0)]
@@ -1160,4 +1299,54 @@ Function Set-OSCustomizationSpec-SDK {
   }
 
   return $OSCustomizationSpec
+}
+
+Function Global:AddTag {
+  <#
+    .Synopsis
+       This function adds tag to VM in existing catgory.
+    .DESCRIPTION
+       This function adds tag to VM in existing catgory. If tag already exists then it'd add it, if tag doesn't exist yet tyhen it'd create and add it.
+    .EXAMPLE
+       $vm = Get-View -ViewType VirtualMachine -Filter @{Name="^VM001$"}
+
+       $vm | AddTag -Category "Change" -Tag "C00342104" -description "КЭ ЛС"
+    .PARAMETER Category
+      Specifies category name.
+    .PARAMETER Tag
+      Specifies tag name.
+    .PARAMETER VM
+      Specifies the virtual machine to which you want to add the tag.
+    .PARAMETER description
+      Specifies description of tag.
+    .NOTES
+       Author:  Andrey Nevedomskiy
+    .FUNCTIONALITY
+       This function adds tag to VM in existing catgory.
+    .LINK
+       https://github.com/monosoul/powercli_functions.ps1
+  #>
+  param(
+    [Parameter(Mandatory = $true, ValueFromPipeline=$True, Position = 0)]
+    [VMware.VimAutomation.ViCore.Impl.V1.Inventory.VirtualMachineImpl]$VM,
+    [Parameter(Mandatory = $true)]
+    [string]$Category,
+    [Parameter(Mandatory = $true)]
+    [string]$Tag,
+    [Parameter(Mandatory = $false)]
+    [string]$description = ""
+  )
+
+  $tagObj = Get-Tag $Tag -Category $Category -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
+  if (!($tagObj)) {
+    $tagObj = New-Tag -Name $Tag -Category $Category -ErrorAction Continue -WarningAction Continue
+  }
+  $out = $VM | New-TagAssignment -Tag $tagObj
+  if ($out) {
+    Write-Verbose "Добавлен тег $description`: $($tagObj.Name)"
+    Remove-Variable -Name out -Force -Confirm:$false
+  } else {
+    Write-Verbose "Ошибка добавления тега $description`: $($tagObj.Name)"
+    Write-Error "Ошибка добавления тега $description`: $($tagObj.Name)" -TargetObject $VM
+  }
 }
